@@ -33,15 +33,84 @@ function createReportItem(report) {
   created.className = 'report-date';
   created.textContent = new Date(report.createdAt).toLocaleString();
   item.append(channel, reason, description, status, created);
-  if (report.evidenceUrl) {
-    const evidence = document.createElement('a');
-    evidence.href = report.evidenceUrl;
-    evidence.target = '_blank';
-    evidence.rel = 'noopener';
-    evidence.textContent = 'View evidence image';
-    item.append(evidence);
+  if (report.evidenceUrls?.length) {
+    report.evidenceUrls.forEach((evidenceUrl, index) => {
+      const evidence = document.createElement('a');
+
+      evidence.href = evidenceUrl;
+      evidence.target = '_blank';
+      evidence.rel = 'noopener';
+      evidence.textContent = `View evidence image ${index + 1}`;
+
+      item.append(evidence);
+    });
   }
+
+  const editButton = document.createElement('button');
+  editButton.type = 'button';
+  editButton.textContent = 'Edit';
+  editButton.addEventListener('click', () => {
+    editReport(report);
+  });
+
+  const deleteButton = document.createElement('button');
+  deleteButton.type = 'button';
+  deleteButton.textContent = 'Delete';
+
+  deleteButton.addEventListener('click', () => {
+    deleteReport(report._id);
+  });
+
+  item.append(editButton, deleteButton);
+
   return item;
+}
+
+async function editReport(report) {
+  const reason = prompt(
+    'Reason:',
+    report.reason
+  );
+
+  if (!reason) return;
+
+  const description = prompt(
+    'Description:',
+    report.description
+  );
+
+  if (!description) return;
+
+  const status = prompt(
+    'Status (OPEN or CLOSED):',
+    report.status
+  );
+
+  if (!status) return;
+
+  const response = await fetch(`/api/reports/${report._id}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      reason,
+      description,
+      status
+    })
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+
+    reportsStatus.textContent =
+      payload.error?.message || 'Could not update report.';
+
+    return;
+  }
+
+  reportsStatus.textContent = 'Report updated.';
+  await loadReports();
 }
 
 async function loadReports() {
@@ -62,14 +131,11 @@ async function submitReport(event) {
   formData.append('channelId', channelId);
   formData.append('reason', document.querySelector('#report-reason').value);
   formData.append('description', document.querySelector('#report-description').value);
-  const evidence =
-    document.querySelector('#report-evidence').files[0];
-  // TODO v4.5 4:
-  // Completa el nombre del campo utilizado para enviar la imagen.
-  // Objetivo: relacionar el archivo del formulario con upload.single().
-  // Resultado esperado: Multer reconocerá la evidencia enviada por el navegador.
-  if (evidence) {
-    formData.append('________', evidence);
+  const evidenceFiles =
+  document.querySelector('#report-evidence').files;
+
+  for (const file of evidenceFiles) {
+    formData.append('evidence', file);
   }
 
   reportFormStatus.textContent = 'Submitting report…';
@@ -79,7 +145,7 @@ async function submitReport(event) {
   // Resultado esperado: POST /api/reports recibirá correctamente multipart/form-data.
   const response = await fetch('/api/reports', {
     method: 'POST',
-    body: ________
+    body: formData
   });
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
@@ -103,3 +169,27 @@ function configureReportForm() {
 document.querySelector('#logout').addEventListener('click', async () => { await fetch('/api/auth/logout', { method: 'POST' }); location.href = '/login'; });
 async function start() { if (await loadUser()) { configureReportForm(); await loadReports(); } }
 start();
+
+async function deleteReport(reportId) {
+  const confirmed = confirm(
+    'Are you sure you want to delete this report?'
+  );
+
+  if (!confirmed) return;
+
+  const response = await fetch(`/api/reports/${reportId}`, {
+    method: 'DELETE'
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+
+    reportsStatus.textContent =
+      payload.error?.message || 'Could not delete report.';
+
+    return;
+  }
+
+  reportsStatus.textContent = 'Report deleted.';
+  await loadReports();
+}
